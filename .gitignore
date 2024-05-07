@@ -1,0 +1,6 @@
+# Binary Builds
+HelloJackHunter/bin/Release/*
+HelloJackHunter/bin/*
+HelloJackHunter/obj/*
+*.cache
+*.dll
