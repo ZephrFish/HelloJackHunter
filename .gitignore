@@ -4,3 +4,6 @@ HelloJackHunter/bin/*
 HelloJackHunter/obj/*
 *.cache
 *.dll
+PowerShell/HiJackChecker.ps1
+PowerShell/MyConfig.pmc
+PowerShell/ProcMonAutomation.ps1
