@@ -7,3 +7,4 @@ HelloJackHunter/obj/*
 PowerShell/HiJackChecker.ps1
 PowerShell/MyConfig.pmc
 PowerShell/ProcMonAutomation.ps1
+.vs/*
