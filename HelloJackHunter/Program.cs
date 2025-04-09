@@ -1,9 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Collections.Generic;
 
 namespace HelloJackHunter
 {
@@ -97,6 +98,67 @@ namespace HelloJackHunter
             {
                 Console.WriteLine($"[FATAL] Error processing {dllPath}: {ex.Message}");
             }
+        }
+
+        static string LocateCompiler()
+        {
+            string vswhere = @"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe";
+            if (!File.Exists(vswhere)) return null;
+
+            ProcessStartInfo psi = new ProcessStartInfo
+            {
+                FileName = vswhere,
+                Arguments = "-latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath",
+                RedirectStandardOutput = true,
+                UseShellExecute = false
+            };
+
+            using (Process p = Process.Start(psi))
+            {
+                string installPath = p.StandardOutput.ReadLine()?.Trim();
+                if (!string.IsNullOrWhiteSpace(installPath))
+                {
+                    string basePath = Path.Combine(installPath, @"VC\Tools\MSVC");
+                    if (Directory.Exists(basePath))
+                    {
+                        string[] versions = Directory.GetDirectories(basePath);
+                        if (versions.Length > 0)
+                        {
+                            string latest = versions.OrderByDescending(v => v).First();
+                            return Path.Combine(latest, @"bin\Hostx64\x64\cl.exe");
+                        }
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        static string LocateVcvars64()
+        {
+            string vswhere = @"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe";
+            if (!File.Exists(vswhere)) return null;
+
+            ProcessStartInfo psi = new ProcessStartInfo
+            {
+                FileName = vswhere,
+                Arguments = "-latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath",
+                RedirectStandardOutput = true,
+                UseShellExecute = false
+            };
+
+            using (Process p = Process.Start(psi))
+            {
+                string installPath = p.StandardOutput.ReadLine()?.Trim();
+                if (!string.IsNullOrWhiteSpace(installPath))
+                {
+                    string vcvarsPath = Path.Combine(installPath, @"VC\Auxiliary\Build\vcvars64.bat");
+                    if (File.Exists(vcvarsPath))
+                        return vcvarsPath;
+                }
+            }
+
+            return null;
         }
 
         static string LocateDumpbin()
@@ -253,30 +315,82 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 
         static void CompileToDll(string cppFileName)
         {
-            string outputDllName = Path.ChangeExtension(cppFileName, ".dll");
-            string compilerPath = @"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.37.32822\bin\Hostx64\x64\cl.exe";
-            string compilerArgs = $"/LD \"{cppFileName}\" /Fe\"{outputDllName}\" /Fo\"{Path.GetDirectoryName(cppFileName)}\\";
-
-            ProcessStartInfo startInfo = new ProcessStartInfo
+            string compilerPath = LocateCompiler();
+            if (string.IsNullOrWhiteSpace(compilerPath) || !File.Exists(compilerPath))
             {
-                FileName = compilerPath,
-                Arguments = compilerArgs,
+                Console.WriteLine($"[ERROR] Compiler not found. Make sure cl.exe is installed via Visual Studio.");
+                return;
+            }
+
+            string vcvarsPath = LocateVcvars64();
+            if (string.IsNullOrWhiteSpace(vcvarsPath) || !File.Exists(vcvarsPath))
+            {
+                Console.WriteLine($"[ERROR] Could not locate vcvars64.bat — is Visual Studio fully installed?");
+                return;
+            }
+
+            string outputDllName = Path.ChangeExtension(cppFileName, ".dll");
+            string outputDir = Path.GetDirectoryName(cppFileName);
+            string objFile = Path.Combine(outputDir, Path.GetFileNameWithoutExtension(cppFileName) + ".obj");
+            string args = $"/nologo /LD /O2 /MT /DNDEBUG /GS- /Gw /GF \"{cppFileName}\" /Fe\"{outputDllName}\" /Fo\"{objFile}\" /link /OPT:REF /OPT:ICF";
+            string envDumpCmd = $"\"{vcvarsPath}\" && set";
+
+            Dictionary<string, string> envVars = new Dictionary<string, string>();
+            ProcessStartInfo envStart = new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = $"/c {envDumpCmd}",
                 RedirectStandardOutput = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
 
+            using (Process proc = Process.Start(envStart))
+            {
+                string line;
+                while ((line = proc.StandardOutput.ReadLine()) != null)
+                {
+                    int idx = line.IndexOf('=');
+                    if (idx > 0)
+                    {
+                        string key = line.Substring(0, idx);
+                        string value = line.Substring(idx + 1);
+                        envVars[key] = value;
+                    }
+                }
+            }
+
+            ProcessStartInfo compileStart = new ProcessStartInfo
+            {
+                FileName = compilerPath,
+                Arguments = args,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            foreach (var kvp in envVars)
+            {
+                compileStart.Environment[kvp.Key] = kvp.Value;
+            }
+
             try
             {
-                using (Process process = Process.Start(startInfo))
+                using (Process process = Process.Start(compileStart))
                 {
-                    using (StreamReader reader = process.StandardOutput)
+                    string output = process.StandardOutput.ReadToEnd();
+                    string error = process.StandardError.ReadToEnd();
+
+                    Console.WriteLine(output);
+                    if (!string.IsNullOrEmpty(error))
                     {
-                        Console.WriteLine(reader.ReadToEnd());
+                        Console.WriteLine($"[cl.exe stderr] {error}");
                     }
                 }
 
                 Console.WriteLine($"[INFO] Compiled DLL: {outputDllName}");
+                Console.WriteLine($"[INFO] Suggestion is to compile manually with Visual Studio!");
             }
             catch (Exception ex)
             {
