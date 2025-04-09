@@ -10,7 +10,9 @@ Some research into WinSxS binaries and finding hijackable paths, more informatio
 ## Usage
 To execute the binary simply download the sln file, compile it then run:
 
-`Usage: HelloJackHunter.exe <path to DLL or directory> <output path>`
+`Usage: HelloJackHunter.exe <path to DLL or directory> <output path> <shellcode.bin>`
+
+It'll pull in the shellcode of choice and auto compile however it is advised to manually compile with VS for better evasion.
 
 ## Known Vulnerable Binaries;
 | Binary Name | Path | DLL Name / Path |
