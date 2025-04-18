@@ -66,7 +66,7 @@ namespace HelloJackHunter
             sb.AppendLine("#include <stdio.h>");
             sb.AppendLine("#include <stdlib.h>");
             sb.AppendLine("#include <string.h>");
-            sb.AppendLine("#include <pch.h>");
+            sb.AppendLine("#include ""pch.h"");
             sb.AppendLine();
 
             try
